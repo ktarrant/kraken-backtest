@@ -3,37 +3,11 @@ import pandas as pd
 
 
 from backtrader import Cerebro, TimeFrame, WriterFile
-from backtrader.feeds import PandasData
 from backtrader import Strategy
 from backtrader.sizers import PercentSizer
 
 from supertrend import Supertrend
-
-# NOTE: for the (default) 1-minute granularity, the API seems to provide
-# data up to 12 hours old only!
-# since = str(1499000000) # UTC 2017-07-02 12:53:20
-def load_cached_sample(today = datetime.date.today(), pair = 'XXBTZUSD', interval = 15):
-    since = datetime.date(2017, 1, 1)
-    cache_fn = "{}_{}_{}m.csv".format(today, pair, interval)
-
-    try:
-        sample_table = pd.read_csv(cache_fn)
-        sample_table['datetime'] = sample_table['datetime'].apply(
-            lambda s: datetime.datetime.strptime(s, '%Y-%m-%d %H:%M:%S'))
-        sample_table = sample_table.set_index('datetime')
-    except IOError:
-        # This downloads the live data from Kraken, but only up to 12 hours worth
-        import krakenex
-        k = krakenex.API()
-        ret = k.query_public('OHLC', req={ 'pair': pair, 'since': since, 'interval': interval})
-        ohlc_columns = ['datetime', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count']
-        sample_table = pd.DataFrame(data = ret['result'][pair], columns=ohlc_columns)
-        sample_table = sample_table.apply(lambda ax: pd.to_numeric(ax, errors='ignore'))
-        sample_table['datetime'] = sample_table['datetime'].apply(datetime.datetime.fromtimestamp)
-        sample_table = sample_table.set_index('datetime')
-        sample_table.to_csv(cache_fn)
-
-    return sample_table
+from krakendata import KrakenData
 
 class TestStrategy(Strategy):
 
@@ -71,12 +45,10 @@ class TestStrategy(Strategy):
         self.order = None
 
 # Append X to the ticker if it is a crypto, Z if it is a fiat
-LONG_CURRENCY = 'XLTC'
+LONG_CURRENCY = 'XXBT'
 SHORT_CURRENCY = 'ZUSD'
 PAIR = "{}{}".format(LONG_CURRENCY, SHORT_CURRENCY)
-INTERVAL = 60
-
-sample_table = load_cached_sample(pair=PAIR, interval=INTERVAL)
+INTERVAL = 1
 
 # Create a cerebro entity
 cerebro = Cerebro()
@@ -87,7 +59,8 @@ cerebro.broker.setcash(100000.0)
 # Set our sizer
 cerebro.addsizer(PercentSizer, percents=90)
 
-datafeed = PandasData(dataname=sample_table, timeframe=TimeFrame.Minutes, compression=INTERVAL)
+# Load the Kraken data
+datafeed = KrakenData(dataname=PAIR, timeframe=TimeFrame.Minutes, compression=INTERVAL)
 cerebro.adddata(datafeed)
 
 # Add the strategies to run

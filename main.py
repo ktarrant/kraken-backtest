@@ -28,11 +28,13 @@ class TestStrategy(Strategy):
 
         if cur_trend != self.last_trend:
 
-            self.close( )  # closes existing position - no matter in which direction
+            self.close()  # closes existing position - no matter in which direction
             if cur_trend == 1:
                 self.buy()  # enter long
+                print("LONG")
             elif cur_trend == -1:
                 self.sell()  # enter short
+                print("SHORT")
 
         self.last_trend = cur_trend
 
@@ -67,7 +69,7 @@ cerebro.adddata(datafeed)
 cerebro.addstrategy(TestStrategy)
 
 # Run the backtest
-result = cerebro.run( )
+result = cerebro.run()
 
 # Plot the result
-cerebro.plot( )
+cerebro.plot()

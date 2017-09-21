@@ -1,7 +1,7 @@
-import pandas as pd
 from datetime import datetime
 from threading import Thread
-
+from queue import Queue
+import time
 
 from backtrader import DataBase
 from backtrader.utils.py3 import (integer_types, queue, string_types,
@@ -21,7 +21,7 @@ class MetaKrakenData(DataBase.__class__):
 
 class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
     params = (
-        ('qcheck', 30.0), # sleep time of refresh thread
+        ('refresh_period', 60.0), # refresh period in seconds
         ('historical', False),  # stop loading after backfill load
         ('backfill_start', True),  # do a backfill load when starting up
     )
@@ -58,23 +58,56 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
             self._lastdate = datetime.min
             self._ohlc = self.k.get_ohlc(self.p.dataname, self._lastdate, self.interval)
             self._since = self.k.get_source_time()
-            self._localsince = datetime.now()
             self._state = self._ST_FROM
             self._fillcur = 0
 
+        elif not self.historical:
+            self._state = self._ST_LIVE
+            self._start_live()
+
+        else:
+            self._state = self._ST_OVER
+
     def stop(self):
-        pass
+        self._state = self._ST_OVER
+
+    def _start_live(self):
+        # start up the streamer
+        self._q = Queue()
+        self._th = Thread(target=self._t_refresh, daemon=False)
+        self._th.start()
+
+    def _t_refresh(self):
+        refresh_period = self.p.refresh_period
+        def g_tick():
+            t = time.time()
+            count = 0
+            while True:
+                count += 1
+                yield max(t + count * refresh_period - time.time(), 0)
+
+        g = g_tick( )
+        while self._state == self._ST_LIVE:
+            time.sleep(next(g))
+            # Do data load here
+            ohlc_new = self.k.get_ohlc(self.p.dataname, self._since.timestamp(), self.interval)
+            found_new = False
+            print(ohlc_new.index)
+            for dt in ohlc_new.index:
+                if dt > self._lastdate:
+                    self._lastdate = dt
+                    self._lastrow = ohlc_new.loc[dt]
+                    self._q.put((self._lastdate, self._lastrow))
+                    found_new = True
+
+            if found_new:
+                self._since = self.k.get_source_time()
 
     def _load(self):
         if self._state == self._ST_FROM:
             self._lastdate = self._ohlc.index[self._fillcur]
-            self.lines.datetime[0] = date2num(self._lastdate)
-            self.lines.open[0] = self._ohlc.open[self._lastdate]
-            self.lines.high[0] = self._ohlc.high[self._lastdate]
-            self.lines.low[0] = self._ohlc.low[self._lastdate]
-            self.lines.close[0] = self._ohlc.close[self._lastdate]
-            self.lines.volume[0] = self._ohlc.volume[self._lastdate]
-            self.lines.openinterest[0] = self._ohlc['count'][self._lastdate]
+            self._lastrow = self._ohlc.loc[self._lastdate]
+            self._load_row(self._lastdate, self._lastrow)
 
             self._fillcur += 1
             if self._fillcur < len(self._ohlc.index):
@@ -86,10 +119,21 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
                     return False
                 else:
                     self._state = self._ST_LIVE
+                    self._start_live()
                     #
                     # Fall-through to return the live data
 
 
         if self._state == self._ST_LIVE:
-            # TODO: Live. Do a blocking get from a Queue to get our next candle.
-            return False
+            self._load_row(*self._q.get())
+            print("LOADED NEW CANDLE: {} - {}".format(self._lastdate, self._lastrow))
+            return self._state == self._ST_LIVE
+
+    def _load_row(self, dt, row):
+        self.lines.datetime[0] = date2num(dt)
+        self.lines.open[0] = row.open
+        self.lines.high[0] = row.high
+        self.lines.low[0] = row.low
+        self.lines.close[0] = row.close
+        self.lines.volume[0] = row.volume
+        self.lines.openinterest[0] = row['count']

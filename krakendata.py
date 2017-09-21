@@ -74,7 +74,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
     def _start_live(self):
         # start up the streamer
         self._q = Queue()
-        self._th = Thread(target=self._t_refresh, daemon=False)
+        self._th = Thread(target=self._t_refresh, daemon=True)
         self._th.start()
 
     def _t_refresh(self):
@@ -90,10 +90,15 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
         while self._state == self._ST_LIVE:
             time.sleep(next(g))
             # Do data load here
-            ohlc_new = self.k.get_ohlc(self.p.dataname, self._since.timestamp(), self.interval)
+            ohlc_new = self.k.get_ohlc(self.p.dataname, self._since, self.interval)
+            if len(ohlc_new.index) < 2:
+                # the latest incomplete bar is always the last index, but we only want complete
+                # bars to add (at least until we figure out if we can update the current candle
+                # multiple times?)
+                continue
+            complete_bars = ohlc_new.index[:-1]
             found_new = False
-            print(ohlc_new.index)
-            for dt in ohlc_new.index:
+            for dt in complete_bars:
                 if dt > self._lastdate:
                     self._lastdate = dt
                     self._lastrow = ohlc_new.loc[dt]
@@ -126,7 +131,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
 
         if self._state == self._ST_LIVE:
             self._load_row(*self._q.get())
-            print("LOADED NEW CANDLE: {} - {}".format(self._lastdate, self._lastrow))
+            print("LOADED NEW CANDLE: {}\n{}".format(self._lastdate, self._lastrow))
             return self._state == self._ST_LIVE
 
     def _load_row(self, dt, row):

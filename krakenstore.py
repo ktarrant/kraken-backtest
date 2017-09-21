@@ -140,7 +140,12 @@ class KrakenStore(with_metaclass(MetaSingleton, object)):
 
     def get_source_time(self):
         ret = self.kex.query_public('Time')
-        return ret['result']['unixtime']
+        return datetime.fromtimestamp(ret['result']['unixtime'])
+
+    def get_instrument(self, dataname):
+        ret = self.kex.query_public('AssetPairs', req={'pair': dataname})
+        pair_ret = ret['result']
+        return pair_ret.get(dataname, None)
 
     def get_ohlc(self, dataname, since, granularity):
         ret = self.kex.query_public('OHLC', req={

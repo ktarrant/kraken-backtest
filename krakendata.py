@@ -1,12 +1,12 @@
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
+from threading import Thread
+
 
 from backtrader import DataBase
 from backtrader.utils.py3 import (integer_types, queue, string_types,
                                   with_metaclass)
 from backtrader import date2num
-
-import krakenex
 
 from krakenstore import KrakenStore
 
@@ -20,53 +20,72 @@ class MetaKrakenData(DataBase.__class__):
         KrakenStore.DataCls = cls
 
 class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
-    # params = (
-    #     ('qcheck', 3.0),
-    #     ('historical', False),  # do backfilling at the start
-    #     ('backfill_start', True),  # do backfilling at the start
-    #     ('backfill', True),  # do backfilling when reconnecting
-    #     ('backfill_from', None),  # additional data source to do backfill from
-    # )
+    params = (
+        ('historical', False),  # stop loading after backfill load
+        ('backfill_start', True),  # do a backfill load when starting up
+    )
 
     _store = KrakenStore
 
+    _ST_IDLE, _ST_FROM, _ST_LIVE, _ST_OVER = range(4)
+
+    def islive(self):
+        '''Returns ``True`` to notify ``Cerebro`` that preloading and runonce
+        should be deactivated'''
+        return True
+
     def __init__(self, **kwargs):
         self.k = self._store(**kwargs)
-        # self._state = self._ST_FROM
+        self._state = self._ST_IDLE
 
     def start(self):
-        self._since = datetime.min # kick it off by requesting all the data
-
-        interval = self.k.get_granularity(self._timeframe, self._compression)
-        if interval is None:
+        # Check that the requested timeframe/compression pair is supported
+        self.interval = self.k.get_granularity(self._timeframe, self._compression)
+        if self.interval is None:
+            self._state = self._ST_OVER
             return
 
-        # This downloads the live data from Kraken, but at 1-min, only get 12 hours worth
-        self._ohlc = self.k.get_ohlc(self.p.dataname, self._since, interval)
-        print(self._ohlc)
+        # Check that the requested pair is actually available, and save off the information we get
+        # because hey why not?
+        self.asset_info = self.k.get_instrument(self.p.dataname)
+        if self.asset_info is None:
+            self._state = self._ST_OVER
+            return
 
-        self._since = self.k.get_source_time()
-        self._icur = 0
+        if self.p.backfill_start:
+            # kick it off by requesting all the data
+            self._ohlc = self.k.get_ohlc(self.p.dataname, datetime.min, self.interval)
+            self._since = self.k.get_source_time()
+            self._localsince = datetime.now()
+            self._state = self._ST_FROM
+            self._fillcur = 0gi
 
     def stop(self):
-        self._icur = -1
+        pass
 
     def _load(self):
-        # sample_table.to_csv(cache_fn)
-        if self._icur >= 0:
-            self.lines.datetime[0] = date2num(self._ohlc.index[self._icur])
-            self.lines.open[0] = self._ohlc.open.iloc[self._icur]
-            self.lines.high[0] = self._ohlc.high.iloc[self._icur]
-            self.lines.low[0] = self._ohlc.low.iloc[self._icur]
-            self.lines.close[0] = self._ohlc.close.iloc[self._icur]
-            self.lines.volume[0] = self._ohlc.volume.iloc[self._icur]
-            self.lines.openinterest[0] = 0.0
+        if self._state == self._ST_FROM:
+            self.lines.datetime[0] = date2num(self._ohlc.index[self._fillcur])
+            self.lines.open[0] = self._ohlc.open.iloc[self._fillcur]
+            self.lines.high[0] = self._ohlc.high.iloc[self._fillcur]
+            self.lines.low[0] = self._ohlc.low.iloc[self._fillcur]
+            self.lines.close[0] = self._ohlc.close.iloc[self._fillcur]
+            self.lines.volume[0] = self._ohlc.volume.iloc[self._fillcur]
+            self.lines.openinterest[0] = self._ohlc['count'].iloc[self._fillcur]
 
-            self._icur += 1
-            if self._icur == len(self._ohlc.index):
-                return False
-            else:
+            self._fillcur += 1
+            if self._fillcur < len(self._ohlc.index):
+                # We have more backfill data to send
                 return True
+            else:
+                if self.p.historical:
+                    return False
+                else:
+                    self._state = self._ST_LIVE
+                    #
+                    # Fall-through to return the live data
 
-        else:
+
+        if self._state == self._ST_LIVE:
+            # TODO: Live. Do a blocking get from a Queue to get our next candle.
             return False

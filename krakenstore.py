@@ -72,7 +72,7 @@ class KrakenStore(with_metaclass(MetaSingleton, object)):
         # self._transpend = collections.defaultdict(collections.deque)
 
         # self._oenv = self._ENVPRACTICE if self.p.practice else self._ENVLIVE
-        self.kex = krakenex.API( )
+        self.kex = krakenex.API()
 
         # self._cash = 0.0
         # self._value = 0.0
@@ -157,98 +157,3 @@ class KrakenStore(with_metaclass(MetaSingleton, object)):
         ohlc_table['datetime'] = ohlc_table['datetime'].apply(datetime.fromtimestamp)
         ohlc_table = ohlc_table.set_index('datetime')
         return ohlc_table
-
-    # def streaming_events(self, tmout=None):
-    #     q = queue.Queue( )
-    #     kwargs = { 'q': q, 'tmout': tmout }
-    #
-    #     t = threading.Thread(target=self._t_streaming_listener, kwargs=kwargs)
-    #     t.daemon = True
-    #     t.start( )
-    #
-    #     t = threading.Thread(target=self._t_streaming_events, kwargs=kwargs)
-    #     t.daemon = True
-    #     t.start( )
-    #     return q
-    #
-    # def _t_streaming_listener(self, q, tmout=None):
-    #     while True:
-    #         trans = q.get( )
-    #         self._transaction(trans)
-    #
-    # def _t_streaming_events(self, q, tmout=None):
-    #     if tmout is not None:
-    #         _time.sleep(tmout)
-    #
-    #     # streamer = Streamer(q,
-    #     #                     environment=self._oenv,
-    #     #                     access_token=self.p.token,
-    #     #                     headers={ 'X-Accept-Datetime-Format': 'UNIX' })
-    #     #
-    #     # streamer.events(ignore_heartbeat=False)
-    #     # TODO: FIGURE OUT WHAT STREAMING EVENTS IS
-    #
-    #
-    # def candles(self, dataname, dtbegin, dtend, timeframe, compression,
-    #             candleFormat, includeFirst):
-    #
-    #     kwargs = locals().copy()
-    #     kwargs.pop('self')
-    #     kwargs['q'] = q = queue.Queue()
-    #     t = threading.Thread(target=self._t_candles, kwargs=kwargs)
-    #     t.daemon = True
-    #     t.start()
-    #     return q
-    #
-    # def _t_candles(self, dataname, dtbegin, dtend, timeframe, compression,
-    #                candleFormat, includeFirst, q):
-    #
-    #     granularity = self.get_granularity(timeframe, compression)
-    #     if granularity is None:
-    #         # e = OandaTimeFrameError()
-    #         # q.put(e.error_response)
-    #         # TODO: ENQUEUE AN ERROR HERE
-    #         return
-    #
-    #     dtkwargs = {}
-    #     if dtbegin is not None:
-    #         dtkwargs['start'] = int((dtbegin - self._DTEPOCH).total_seconds())
-    #
-    #     if dtend is not None:
-    #         dtkwargs['end'] = int((dtend - self._DTEPOCH).total_seconds())
-    #
-    #     # try:
-    #     #     response = self.oapi.get_history(instrument=dataname,
-    #     #                                      granularity=granularity,
-    #     #                                      candleFormat=candleFormat,
-    #     #                                      **dtkwargs)
-    #     #
-    #     # except oandapy.OandaError as e:
-    #     #     q.put(e.error_response)
-    #     #     q.put(None)
-    #     #     return
-    #     # TODO: QUERY HISTORY AND ENQUEUE FOUND CANDLES
-    #
-    #     # for candle in response.get('candles', []):
-    #     #     q.put(candle)
-    #
-    #     q.put({})  # end of transmission
-    #
-    # def streaming_prices(self, dataname, tmout=None):
-    #     q = queue.Queue()
-    #     kwargs = {'q': q, 'dataname': dataname, 'tmout': tmout}
-    #     t = threading.Thread(target=self._t_streaming_prices, kwargs=kwargs)
-    #     t.daemon = True
-    #     t.start()
-    #     return q
-    #
-    # def _t_streaming_prices(self, dataname, q, tmout):
-    #     if tmout is not None:
-    #         _time.sleep(tmout)
-    #
-    #     # streamer = Streamer(q, environment=self._oenv,
-    #     #                     access_token=self.p.token,
-    #     #                     headers={'X-Accept-Datetime-Format': 'UNIX'})
-    #     #
-    #     # streamer.rates(self.p.account, instruments=dataname)
-    #     # TODO: FIGURE OUT WHAT STREAMING RATES IS

@@ -21,6 +21,7 @@ class MetaKrakenData(DataBase.__class__):
 
 class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
     params = (
+        ('qcheck', 30.0), # sleep time of refresh thread
         ('historical', False),  # stop loading after backfill load
         ('backfill_start', True),  # do a backfill load when starting up
     )
@@ -54,7 +55,8 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
 
         if self.p.backfill_start:
             # kick it off by requesting all the data
-            self._ohlc = self.k.get_ohlc(self.p.dataname, datetime.min, self.interval)
+            self._lastdate = datetime.min
+            self._ohlc = self.k.get_ohlc(self.p.dataname, self._lastdate, self.interval)
             self._since = self.k.get_source_time()
             self._localsince = datetime.now()
             self._state = self._ST_FROM
@@ -65,13 +67,14 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
 
     def _load(self):
         if self._state == self._ST_FROM:
-            self.lines.datetime[0] = date2num(self._ohlc.index[self._fillcur])
-            self.lines.open[0] = self._ohlc.open.iloc[self._fillcur]
-            self.lines.high[0] = self._ohlc.high.iloc[self._fillcur]
-            self.lines.low[0] = self._ohlc.low.iloc[self._fillcur]
-            self.lines.close[0] = self._ohlc.close.iloc[self._fillcur]
-            self.lines.volume[0] = self._ohlc.volume.iloc[self._fillcur]
-            self.lines.openinterest[0] = self._ohlc['count'].iloc[self._fillcur]
+            self._lastdate = self._ohlc.index[self._fillcur]
+            self.lines.datetime[0] = date2num(self._lastdate)
+            self.lines.open[0] = self._ohlc.open[self._lastdate]
+            self.lines.high[0] = self._ohlc.high[self._lastdate]
+            self.lines.low[0] = self._ohlc.low[self._lastdate]
+            self.lines.close[0] = self._ohlc.close[self._lastdate]
+            self.lines.volume[0] = self._ohlc.volume[self._lastdate]
+            self.lines.openinterest[0] = self._ohlc['count'][self._lastdate]
 
             self._fillcur += 1
             if self._fillcur < len(self._ohlc.index):
@@ -79,6 +82,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
                 return True
             else:
                 if self.p.historical:
+                    self._state = self._ST_OVER
                     return False
                 else:
                     self._state = self._ST_LIVE

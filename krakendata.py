@@ -58,7 +58,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
             self._since = self.k.get_source_time()
             self._localsince = datetime.now()
             self._state = self._ST_FROM
-            self._fillcur = 0gi
+            self._fillcur = 0
 
     def stop(self):
         pass

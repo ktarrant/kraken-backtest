@@ -46,30 +46,43 @@ class TestStrategy(Strategy):
         # The order was either completed or failed in some way
         self.order = None
 
-# Append X to the ticker if it is a crypto, Z if it is a fiat
-LONG_CURRENCY = 'XXBT'
-SHORT_CURRENCY = 'ZUSD'
-PAIR = "{}{}".format(LONG_CURRENCY, SHORT_CURRENCY)
-INTERVAL = 1
+if __name__ == "__main__":
+    import argparse
 
-# Create a cerebro entity
-cerebro = Cerebro()
+    parser = argparse.ArgumentParser(description="test kraken store and data")
+    parser.add_argument("--long", default="XXBT", help="symbol to long")
+    parser.add_argument("--short", default="ZUSD", help="symbol to short")
+    parser.add_argument("--timeframe", choices=['Minutes', 'Days', 'Weeks'], default='Minutes')
+    parser.add_argument("--compression", default=60, type=int)
+    parser.add_argument("--refresh", default=60, help="data refresh period in 60 seconds")
+    parser.add_argument("--historical", action='store_true', help="only run backfill, no live")
+    parser.add_argument("--no-backfill", action='store_true', help="skip backfill, only live")
+    args = parser.parse_args()
 
-# Set our desired cash start
-cerebro.broker.setcash(100000.0)
+    # Create a cerebro entity
+    cerebro = Cerebro()
 
-# Set our sizer
-cerebro.addsizer(PercentSizer, percents=90)
+    # Set our desired cash start
+    cerebro.broker.setcash(100000.0)
 
-# Load the Kraken data
-datafeed = KrakenData(dataname=PAIR, timeframe=TimeFrame.Minutes, compression=INTERVAL)
-cerebro.adddata(datafeed)
+    # Set our sizer
+    cerebro.addsizer(PercentSizer, percents=90)
 
-# Add the strategies to run
-cerebro.addstrategy(TestStrategy)
+    # Load the Kraken data
+    pair = args.long + args.short
+    datafeed = KrakenData(dataname=pair,
+                          timeframe=getattr(TimeFrame, args.timeframe),
+                          compression=args.compression,
+                          refresh_period=args.refresh,
+                          historical=args.historical,
+                          backfill_start=not args.no_backfill)
+    cerebro.adddata(datafeed)
 
-# Run the backtest
-result = cerebro.run()
+    # Add the strategies to run
+    cerebro.addstrategy(TestStrategy)
 
-# Plot the result
-cerebro.plot()
+    # Run the backtest
+    result = cerebro.run()
+
+    # Plot the result
+    cerebro.plot()

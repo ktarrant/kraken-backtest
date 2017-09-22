@@ -91,4 +91,5 @@ if __name__ == "__main__":
     result = cerebro.run()
 
     # Plot the result
-    cerebro.plot()
+    if args.plot:
+        cerebro.plot()

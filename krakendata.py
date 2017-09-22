@@ -2,6 +2,7 @@ from datetime import datetime
 from threading import Thread
 from queue import Queue
 import time
+import logging
 
 from backtrader import DataBase
 from backtrader.utils.py3 import (integer_types, queue, string_types,
@@ -9,6 +10,8 @@ from backtrader.utils.py3 import (integer_types, queue, string_types,
 from backtrader import date2num
 
 from krakenstore import KrakenStore
+
+log = logging.getLogger(__name__)
 
 class MetaKrakenData(DataBase.__class__):
     def __init__(cls, name, bases, dct):
@@ -43,6 +46,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
         # Check that the requested timeframe/compression pair is supported
         self.interval = self.k.get_granularity(self._timeframe, self._compression)
         if self.interval is None:
+            log.error("Unsupported granularity: {} , {}".format(self._timeframe, self._compression))
             self._state = self._ST_OVER
             return
 
@@ -50,6 +54,7 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
         # because hey why not?
         self.asset_info = self.k.get_instrument(self.p.dataname)
         if self.asset_info is None:
+            log.error("Invalid dataname: {}".format(self.p.dataname))
             self._state = self._ST_OVER
             return
 
@@ -70,8 +75,40 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
     def stop(self):
         self._state = self._ST_OVER
 
+    def _load(self):
+        if self._state == self._ST_FROM:
+            self._lastdate = self._ohlc.index[self._fillcur]
+            self._lastrow = self._ohlc.loc[self._lastdate]
+            self._load_row(self._lastrow)
+
+            self._fillcur += 1
+            if self._fillcur < len(self._ohlc.index):
+                # We have more backfill data to send
+                return True
+            else:
+                if self.p.historical:
+                    self._state = self._ST_OVER
+                    return False
+                else:
+                    self._state = self._ST_LIVE
+                    self._start_live()
+                    #
+                    # Fall-through to return the live data
+
+
+        if self._state == self._ST_LIVE:
+            try:
+                self._load_row(self._q.get())
+                log.debug("Loaded new candle: {}\n{}".format(self._lastdate, self._lastrow))
+                return self._state == self._ST_LIVE
+            except KeyboardInterrupt:
+                log.error("Exiting live data feed")
+                self._state = self._ST_OVER
+                return False
+
     def _start_live(self):
         # start up the streamer
+        log.info("Starting live thread: {}".format(self._lastdate))
         self._q = Queue()
         self._th = Thread(target=self._t_refresh, daemon=True)
         self._th.start()
@@ -95,42 +132,16 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
                 # bars to add (at least until we figure out if we can update the current candle
                 # multiple times?)
                 continue
+
             complete_bars = ohlc_new.index[:-1]
-            found_new = False
             for dt in complete_bars:
                 if dt > self._lastdate:
                     self._lastdate = dt
                     self._lastrow = ohlc_new.loc[dt]
-                    self._q.put((self._lastdate, self._lastrow))
+                    self._q.put(self._lastrow)
 
-    def _load(self):
-        if self._state == self._ST_FROM:
-            self._lastdate = self._ohlc.index[self._fillcur]
-            self._lastrow = self._ohlc.loc[self._lastdate]
-            self._load_row(self._lastdate, self._lastrow)
-
-            self._fillcur += 1
-            if self._fillcur < len(self._ohlc.index):
-                # We have more backfill data to send
-                return True
-            else:
-                if self.p.historical:
-                    self._state = self._ST_OVER
-                    return False
-                else:
-                    self._state = self._ST_LIVE
-                    self._start_live()
-                    #
-                    # Fall-through to return the live data
-
-
-        if self._state == self._ST_LIVE:
-            self._load_row(*self._q.get())
-            print("LOADED NEW CANDLE: {}\n{}".format(self._lastdate, self._lastrow))
-            return self._state == self._ST_LIVE
-
-    def _load_row(self, dt, row):
-        self.lines.datetime[0] = date2num(dt)
+    def _load_row(self, row):
+        self.lines.datetime[0] = date2num(row.name)
         self.lines.open[0] = row.open
         self.lines.high[0] = row.high
         self.lines.low[0] = row.low

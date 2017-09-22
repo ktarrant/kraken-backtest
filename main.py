@@ -1,13 +1,15 @@
 import datetime
 import pandas as pd
+import logging
 
-
-from backtrader import Cerebro, TimeFrame, WriterFile
+from backtrader import Cerebro, TimeFrame, num2date
 from backtrader import Strategy
 from backtrader.sizers import PercentSizer
 
 from supertrend import Supertrend
 from krakendata import KrakenData
+
+log = logging.getLogger(__name__)
 
 class TestStrategy(Strategy):
 
@@ -31,10 +33,10 @@ class TestStrategy(Strategy):
             self.close()  # closes existing position - no matter in which direction
             if cur_trend == 1:
                 self.buy()  # enter long
-                print("LONG")
+                log.info("Enter long: {}".format(num2date(self.data.datetime[0])))
             elif cur_trend == -1:
                 self.sell()  # enter short
-                print("SHORT")
+                log.info("Enter short: {}".format(num2date(self.data.datetime[0])))
 
         self.last_trend = cur_trend
 
@@ -53,11 +55,15 @@ if __name__ == "__main__":
     parser.add_argument("--long", default="XXBT", help="symbol to long")
     parser.add_argument("--short", default="ZUSD", help="symbol to short")
     parser.add_argument("--timeframe", choices=['Minutes', 'Days', 'Weeks'], default='Minutes')
-    parser.add_argument("--compression", default=1, type=int)
+    parser.add_argument("--compression", default=60, type=int)
     parser.add_argument("--refresh", default=60, help="data refresh period in 60 seconds")
     parser.add_argument("--historical", action='store_true', help="only run backfill, no live")
     parser.add_argument("--no-backfill", action='store_true', help="skip backfill, only live")
+    parser.add_argument("--loglevel", default="INFO", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'])
+    parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
+
+    logging.basicConfig(level=getattr(logging, args.loglevel))
 
     # Create a cerebro entity
     cerebro = Cerebro()

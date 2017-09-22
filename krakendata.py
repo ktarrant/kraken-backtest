@@ -65,8 +65,9 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
             self._state = self._ST_FROM
             self._fillcur = 0
 
-        elif not self.historical:
+        elif not self.p.historical:
             self._state = self._ST_LIVE
+            self._lastdate = self.k.get_source_time()
             self._start_live()
 
         else:

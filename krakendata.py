@@ -57,7 +57,6 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
             # kick it off by requesting all the data
             self._lastdate = datetime.min
             self._ohlc = self.k.get_ohlc(self.p.dataname, self._lastdate, self.interval)
-            self._since = self.k.get_source_time()
             self._state = self._ST_FROM
             self._fillcur = 0
 
@@ -86,11 +85,11 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
                 count += 1
                 yield max(t + count * refresh_period - time.time(), 0)
 
-        g = g_tick( )
+        g = g_tick()
         while self._state == self._ST_LIVE:
             time.sleep(next(g))
             # Do data load here
-            ohlc_new = self.k.get_ohlc(self.p.dataname, self._since, self.interval)
+            ohlc_new = self.k.get_ohlc(self.p.dataname, self._lastdate, self.interval)
             if len(ohlc_new.index) < 2:
                 # the latest incomplete bar is always the last index, but we only want complete
                 # bars to add (at least until we figure out if we can update the current candle
@@ -103,10 +102,6 @@ class KrakenData(with_metaclass(MetaKrakenData, DataBase)):
                     self._lastdate = dt
                     self._lastrow = ohlc_new.loc[dt]
                     self._q.put((self._lastdate, self._lastrow))
-                    found_new = True
-
-            if found_new:
-                self._since = self.k.get_source_time()
 
     def _load(self):
         if self._state == self._ST_FROM:

@@ -53,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--long", default="XXBT", help="symbol to long")
     parser.add_argument("--short", default="ZUSD", help="symbol to short")
     parser.add_argument("--timeframe", choices=['Minutes', 'Days', 'Weeks'], default='Minutes')
-    parser.add_argument("--compression", default=60, type=int)
+    parser.add_argument("--compression", default=1, type=int)
     parser.add_argument("--refresh", default=60, help="data refresh period in 60 seconds")
     parser.add_argument("--historical", action='store_true', help="only run backfill, no live")
     parser.add_argument("--no-backfill", action='store_true', help="skip backfill, only live")
